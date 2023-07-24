@@ -1,17 +1,18 @@
 extends Resource
 
-class_name WFCRules2D
+class_name WFCRules3D
 
 @export
-var mapper: WFCMapper2D
+var mapper: WFCMapper3D
 
 @export
 var complete_matrices: bool = true
 
 @export
-var axes: Array[Vector2i] = [
-	Vector2i(0, 1),
-	Vector2i(1, 0)
+var axes: Array[Vector3i] = [
+	Vector3i(0, 0, 1),
+	Vector3i(0, 1, 0),
+	Vector3i(1, 0, 0)
 ]
 
 @export
@@ -19,26 +20,27 @@ var axis_matrices: Array[WFCBitMatrix] = []
 
 
 func _learn_from(map: Node, positive: bool):
-	var learning_rect: Rect2i = mapper.get_used_rect(map)
+	var learning_rect: AABB = mapper.get_used_rect(map)
 
 	for x in range(learning_rect.position.x, learning_rect.end.x):
 		for y in range(learning_rect.position.y, learning_rect.end.y):
-			var cell_coords: Vector2i = Vector2i(x, y)
-			var cell: int = mapper.read_cell(map, cell_coords)
-			
-			if cell < 0:
-				continue
-			
-			for a in range(axes.size()):
-				var a_dir: Vector2i = axes[a]
-				var other_cell: int = mapper.read_cell(
-					map,
-					cell_coords + a_dir,
-				)
-				if other_cell < 0:
+			for z in range(learning_rect.position.z, learning_rect.end.z):
+				var cell_coords: Vector3i = Vector3i(x, y, z)
+				var cell: int = mapper.read_cell(map, cell_coords)
+				
+				if cell < 0:
 					continue
 				
-				axis_matrices[a].set_bit(cell, other_cell, positive)
+				for a in range(axes.size()):
+					var a_dir: Vector3i = axes[a]
+					var other_cell: int = mapper.read_cell(
+						map,
+						cell_coords + a_dir,
+					)
+					if other_cell < 0:
+						continue
+					
+					axis_matrices[a].set_bit(cell, other_cell, positive)
 
 func learn_from(map: Node):
 	assert(mapper != null)
@@ -88,7 +90,7 @@ func format() -> String:
 
 const MAX_INT_32 = 2147483647
 
-func get_influence_range() -> Vector2i:
+func get_influence_range() -> Vector3i:
 	"""
 	Returns distances along X and Y axes at which a certain cell stops
 	influencing domains of other cells along those axes.
@@ -108,11 +110,11 @@ func get_influence_range() -> Vector2i:
 	assert(axes.size() > 0)
 	assert(axis_matrices.size() == axes.size())
 
-	var res: Vector2i = Vector2i(0, 0)
+	var res: Vector3i = Vector3i(0, 0, 0)
 	
 	for a in range(len(axes)):
 		var matrix: WFCBitMatrix = axis_matrices[a]
-		var axis: Vector2i = axes[a]
+		var axis: Vector3i = axes[a]
 
 		var forward_path: int = matrix.get_longest_path()
 
@@ -121,6 +123,8 @@ func get_influence_range() -> Vector2i:
 				res.x = MAX_INT_32
 			if axis.y != 0:
 				res.y = MAX_INT_32
+			if axis.z != 0:
+				res.z = MAX_INT_32
 			continue
 
 		var backward_path: int = matrix.transpose().get_longest_path()
@@ -130,12 +134,15 @@ func get_influence_range() -> Vector2i:
 				res.x = MAX_INT_32
 			if axis.y != 0:
 				res.y = MAX_INT_32
+			if axis.z != 0:
+				res.z = MAX_INT_32
 			continue
 
 		var longest_path: int = max(forward_path, backward_path)
 
 		res.x = max(res.x, abs(axis.x) * longest_path)
 		res.y = max(res.y, abs(axis.y) * longest_path)
+		res.z = max(res.z, abs(axis.z) * longest_path)
 
 	return res
 
